@@ -487,7 +487,7 @@ run_hysteria_v2_setup() {
     if [ -d "$user_directory" ]; then
         clear
         echo "--------------------------------------------------------------------------------"
-        echo -e "\e[1;33mHysteria directory already exists. Checking for latest version..\e[0m"
+        echo -e "\e[1;33mHysteria v2 directory already exists. Checking for latest version..\e[0m"
         echo "--------------------------------------------------------------------------------"
         sleep 2
 
@@ -506,63 +506,73 @@ run_hysteria_v2_setup() {
         mkdir -p "$user_directory"
         cd "$user_directory"
 
-    cat << EOF > "$user_directory/config.json"
-    {
-    "listen": ":$port",
-    "tls": {
-        "cert": "$user_directory/ca.crt",
-        "key": "$user_directory/ca.key"
-    },
-    "obfs": {
-        "type": "salamander",
-        "salamander": {
-        "password": "$password"
-        }
-    },
-    "auth": {
-        "type": "password",
-        "password": "$password"
-    },
-    "quic": {
-        "initStreamReceiveWindow": 8388608,
-        "maxStreamReceiveWindow": 8388608,
-        "initConnReceiveWindow": 20971520,
-        "maxConnReceiveWindow": 20971520,
-        "maxIdleTimeout": "60s",
-        "maxIncomingStreams": 1024,
-        "disablePathMTUDiscovery": false
-    },
-    "bandwidth": {
-        "up": "1 gbps",
-        "down": "1 gbps"
-    },
-    "ignoreClientBandwidth": false,
-    "disableUDP": false,
-    "udpIdleTimeout": "60s",
-    "resolver": {
-        "type": "udp",
-        "tcp": {
-        "addr": "8.8.8.8:53",
-        "timeout": "4s"
-        },
-        "udp": {
-        "addr": "8.8.4.4:53",
-        "timeout": "4s"
-        },
-        "tls": {
-        "addr": "1.1.1.1:853",
-        "timeout": "10s",
-        "sni": "cloudflare-dns.com",
-        "insecure": false
-        },
-        "https": {
-        "addr": "1.1.1.1:443",
-        "timeout": "10s",
-        "sni": "cloudflare-dns.com",
-        "insecure": false
-        }
-    }
-    }
+    cat << EOF > "$user_directory/config.yaml"
+listen: $port
+tls:
+  cert: /etc/letsencrypt/live/$IPV4_DOMAIN/fullchain.pem;
+  key: /etc/letsencrypt/live/$IPV4_DOMAIN/privkey.pem;
+obfs:
+  type: salamander
+  salamander:
+    password: $password
+quic:
+  initStreamReceiveWindow: 8388608 
+  maxStreamReceiveWindow: 8388608 
+  initConnReceiveWindow: 20971520 
+  maxConnReceiveWindow: 20971520 
+  maxIdleTimeout: 30s 
+  maxIncomingStreams: 1024 
+  disablePathMTUDiscovery: false 
+bandwidth:
+  up: 1 gbps
+  down: 1 gbps
+ignoreClientBandwidth: false
+disableUDP: false
+udpIdleTimeout: 60s
+auth:
+  type: userpass
+  password: $password
+  userpass: 
+    aio: $password
+resolver:
+  type: udp
+  tcp:
+    addr: 8.8.8.8:53 
+    timeout: 4s 
+  udp:
+    addr: 8.8.4.4:53 
+    timeout: 4s
+  tls:
+    addr: 1.1.1.1:853 
+    timeout: 10s
+    sni: cloudflare-dns.com 
+    insecure: false 
+  https:
+    addr: 1.1.1.1:443 
+    timeout: 10s
+    sni: cloudflare-dns.com
+    insecure: false
+acl:
+  inline:
+    - reject(geoip:ir)
+    - reject(regexp:.*\\\\.ir$)
+    - reject(geosite:category-ir)   
+outbounds:
+  - name: direct
+    type: direct
+masquerade:
+  type: proxy
+  file:
+    dir: /var/www/$IPV4_DOMAIN/html
+  proxy:
+    url: https://google.com
+    rewriteHost: true
+  listenHTTP: :80 
+  listenHTTPS: :443 
+  forceHTTPS: true
+
+
+
 EOF
     fi
 
@@ -598,7 +608,7 @@ EOF
         WorkingDirectory=$user_directory
         CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
         AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-        ExecStart=$user_directory/hysteria-linux-amd64 -c $user_directory/config.json server
+        ExecStart=$user_directory/hysteria-linux-amd64 -c $user_directory/config.yaml server
         ExecReload=/bin/kill -HUP $MAINPID
         Restart=always
         RestartSec=5
@@ -700,8 +710,8 @@ show_hy2_configs() {
         http:
         listen: 127.0.0.1:10809"
 
-        IPV4_URL="hysteria2://$password@$IPV4:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=google.com#HysteriaV2 IPv4"
-        IPV6_URL="hysteria2://$password@[$IPV6]:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=google.com#HysteriaV2 IPv6"
+        IPV4_URL="hysteria2://$password@$IPV4:$port/?insecure=0&obfs=salamander&obfs-password=$password&aio=$password&sni=google.com#HysteriaV2 IPv4"
+        IPV6_URL="hysteria2://$password@[$IPV6]:$port/?insecure=0&obfs=salamander&obfs-password=$password&aio=$password&sni=google.com#HysteriaV2 IPv6"
 
         echo "----------------config info-----------------"
         echo -e "\e[1;33mPassword: $password\e[0m"
@@ -1296,18 +1306,9 @@ setup_cert() {
         sudo ufw enable
         sudo ufw allow ssh
 
-        # Ensure Nginx is installed and set up
-        if ! command -v nginx &> /dev/null; then            
-            sudo apt-get install -y nginx
-            sudo systemctl enable nginx
-            echo "Nginx installed."
-            sleep 2
-        fi
-        
         sudo ufw allow 'Nginx HTTPS'
         sudo ufw allow 'Nginx HTTP'
         
-        # Prompt user for HTTPS port
         clear
 
         sudo systemctl stop nginx
@@ -1318,6 +1319,31 @@ setup_cert() {
 
         sudo ufw delete allow 'Nginx HTTP'
         
+        sudo systemctl start nginx
+    fi
+    readp "Press Enter to continue..."
+}
+
+setup_nginx() {
+    if [ -z "$IPV4_DOMAIN" ]; then
+       rred "IPv4 Domain is not set. Please set it first using option 1 in Domains menu."
+       return
+    else
+        source ~/.bashrc
+        # Install Certbot
+        sudo apt-get update
+        clear
+
+        # Ensure Nginx is installed and set up
+        if ! command -v nginx &> /dev/null; then            
+            sudo apt-get install -y nginx
+            sudo systemctl enable nginx
+            echo "Nginx installed."
+            sleep 2
+        fi
+        
+        clear
+
         sudo systemctl start nginx
 
         your_domain="$IPV4_DOMAIN"
@@ -1814,8 +1840,8 @@ while true; do
                     3) # Cert + nginx setup
                         setup_cert
                         ;;
-                    4) # NAT nginx setup
-                        setup_nginx_nat
+                    4) # nginx setup
+                        setup_nginx
                         ;;
                     0) # Back to Main Menu
                         break
