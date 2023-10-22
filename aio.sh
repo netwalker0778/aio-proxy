@@ -248,9 +248,9 @@ display_domains_menu() {
     echo
     green "2. IPv6 Domain"
     echo
-    green "3. Cert + Nginx Setup"
+    green "3. Cert Setup"
     echo
-    green "4. NAT Nginx Setup (get certs manually from Cloudflare)"
+    green "4. Nginx Setup"
     echo
     green "0. Back to Main Menu"
     echo "**********************************************"
@@ -507,7 +507,7 @@ run_hysteria_v2_setup() {
         cd "$user_directory"
 
     cat << EOF > "$user_directory/config.yaml"
-listen: $port
+listen: :$port
 tls:
   cert: /etc/letsencrypt/live/$IPV4_DOMAIN/fullchain.pem;
   key: /etc/letsencrypt/live/$IPV4_DOMAIN/privkey.pem;
